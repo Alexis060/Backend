@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const User = require('../models/User'); // Asegúrate que tu modelo User ya tiene el campo 'role'
 const router = express.Router();
 
 // Ruta de registro
@@ -40,18 +40,22 @@ router.post('/register', async (req, res) => {
             });
         }
 
-        // Crear el nuevo usuario
+        // Crear el nuevo usuario (el rol se asignará por defecto desde el modelo User.js)
         const user = new User({ name, email, password });
 
         // Guardar el usuario en la base de datos
         await user.save();
 
-        // Generar un token JWT
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-            expiresIn: '30d',
+        // Generar un token JWT incluyendo el rol
+        const tokenPayload = { 
+            userId: user._id, 
+            role: user.role // <--- CAMBIO: Incluir rol en el token
+        };
+        const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+            expiresIn: '30d', // O el tiempo que prefieras
         });
 
-        // Respuesta exitosa
+        // Respuesta exitosa, incluyendo el rol del usuario
         res.status(201).json({
             success: true,
             message: 'Usuario registrado exitosamente',
@@ -59,7 +63,8 @@ router.post('/register', async (req, res) => {
             user: {
                 id: user._id,
                 name: user.name,
-                email: user.email
+                email: user.email,
+                role: user.role // <--- CAMBIO: Devolver rol en la respuesta
             }
         });
 
@@ -67,7 +72,7 @@ router.post('/register', async (req, res) => {
         console.error('Error en el registro:', err);
         res.status(500).json({
             success: false,
-            message: 'Error en el servidor',
+            message: 'Error en el servidor durante el registro',
             error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
@@ -103,7 +108,7 @@ router.post('/login', async (req, res) => {
         if (!user) {
             return res.status(401).json({
                 success: false,
-                message: 'Credenciales inválidas'
+                message: 'Credenciales inválidas (usuario no encontrado)'
             });
         }
 
@@ -112,16 +117,20 @@ router.post('/login', async (req, res) => {
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
-                message: 'Credenciales inválidas'
+                message: 'Credenciales inválidas (contraseña incorrecta)'
             });
         }
 
-        // Generar token
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-            expiresIn: '30d'
+        // Generar token incluyendo el rol
+        const tokenPayload = { 
+            userId: user._id, 
+            role: user.role 
+        };
+        const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+            expiresIn: '30d' // O el tiempo que prefieras
         });
 
-        // Respuesta exitosa
+        // Respuesta exitosa, incluyendo el rol del usuario
         res.status(200).json({
             success: true,
             message: 'Login exitoso',
@@ -129,7 +138,8 @@ router.post('/login', async (req, res) => {
             user: {
                 id: user._id,
                 name: user.name,
-                email: user.email
+                email: user.email,
+                role: user.role 
             }
         });
 
@@ -137,7 +147,7 @@ router.post('/login', async (req, res) => {
         console.error('Error en login:', err);
         res.status(500).json({
             success: false,
-            message: 'Error en el servidor',
+            message: 'Error en el servidor durante el login',
             error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
