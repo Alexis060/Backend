@@ -1,7 +1,7 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const Cart = require('../models/Cart');
-const Product = require('../models/Product'); // Asegúrate de que la ruta sea correcta
+const Product = require('../models/Product'); 
 const mongoose = require('mongoose');
 const router = express.Router();
 
@@ -13,9 +13,7 @@ const formatCartResponse = (cartDocument) => {
   return {
     ...cartDocument, // Usar .toObject() o .lean() si es un documento de Mongoose completo
     products: products.map(item => {
-      // El item.productId ya debería ser el objeto Product populado si .populate() se usó con .lean()
-      // o si se accedió después de una operación que devuelve un objeto plano.
-      // Si item.productId es solo un ID, algo falló en el populate o la estructura es diferente.
+      
       const productDetails = item.productId;
       return {
         ...item, // Esto podría ser item.toObject() si es un subdocumento
@@ -132,7 +130,7 @@ router.post('/merge', authMiddleware, async (req, res) => {
     
     res.status(200).json({
       success: true,
-      message: "Carrito fusionado exitosamente.", // Mensaje simplificado
+      message: "Carrito fusionado exitosamente.",
       cart: formatCartResponse(populatedCart)
     });
 
@@ -304,7 +302,7 @@ router.delete('/remove/:productId', authMiddleware, async (req, res) => {
         // Si el carrito no existía, findOneAndUpdate con $pull no lo creará.
         // Devolver un carrito vacío si el usuario no tenía uno.
         console.log(`Ruta /remove: Carrito no encontrado para userId ${userId} o producto no estaba. Devolviendo carrito vacío.`);
-        return res.status(200).json({ // Devolver 200 con carrito vacío es más amigable para el frontend
+        return res.status(200).json({ 
             success: true,
             message: 'Producto no encontrado en el carrito o carrito no existente.',
             cart: formatCartResponse({ userId, products: [] }) // Estructura de carrito vacío

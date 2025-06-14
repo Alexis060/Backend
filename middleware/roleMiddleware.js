@@ -43,5 +43,4 @@ const authorizeRoles = (allowedRoles) => {
   };
 };
 
-// Exportar la función para que pueda ser importada en otros archivos (como adminroutes.js)
 module.exports = authorizeRoles;

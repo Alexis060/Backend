@@ -1,23 +1,21 @@
 // routes/adminRoutes.js
 const express = require('express');
-const bcrypt = require('bcryptjs'); // Necesario si vas a manejar contraseñas, aunque el pre-save hook lo hace en el modelo
-const User = require('../models/User'); // Tu modelo de Usuario
-const authMiddleware = require('../middleware/authMiddleware'); // Middleware de autenticación
-const authorizeRoles = require('../middleware/roleMiddleware'); // Middleware de autorización por roles
+const bcrypt = require('bcryptjs'); 
+const User = require('../models/User'); 
+const authMiddleware = require('../middleware/authMiddleware');
+const authorizeRoles = require('../middleware/roleMiddleware');
 
 const router = express.Router();
 
 // Ruta POST para que un administrador cree un usuario con rol "operative"
-// Protegida por authMiddleware (debe estar logueado) y authorizeRoles(['admin']) (debe ser admin)
 router.post(
   '/users/create-operative',
   authMiddleware,
-  authorizeRoles(['admin']), // Solo los administradores pueden acceder
+  authorizeRoles(['admin']),
   async (req, res) => {
     try {
       const { name, email, password } = req.body;
 
-      // Validación básica de campos requeridos
       if (!name || !email || !password) {
         return res.status(400).json({
           success: false,
@@ -25,7 +23,6 @@ router.post(
         });
       }
 
-      // Verificar si el usuario ya existe por email
       const userExists = await User.findOne({ email });
       if (userExists) {
         return res.status(409).json({
@@ -34,18 +31,15 @@ router.post(
         });
       }
 
-      // Crear el nuevo usuario con el rol 'operative'
-      // La contraseña se hasheará automáticamente gracias al pre-save hook en tu modelo User.js
       const newUser = new User({
         name,
         email,
         password,
-        role: 'operative', // Asignar directamente el rol 'operative'
+        role: 'operative',
       });
 
       await newUser.save();
 
-      // No devolver la contraseña en la respuesta
       const userToReturn = {
         id: newUser._id,
         name: newUser.name,
@@ -77,14 +71,12 @@ router.post(
 );
 
 // RUTA GET para que un administrador obtenga la lista de usuarios operativos
-// GET /api/admin/users/operatives
 router.get(
     '/users/operatives',
     authMiddleware,
-    authorizeRoles(['admin']), // Solo los administradores pueden acceder
+    authorizeRoles(['admin']),
     async (req, res) => {
         try {
-            // Busca todos los usuarios con rol 'operative' y no devuelve sus contraseñas
             const operativeUsers = await User.find({ role: 'operative' }).select('-password');
             res.json({
                 success: true,
@@ -101,19 +93,82 @@ router.get(
     }
 );
 
+// --- RUTA AÑADIDA: Obtener un solo usuario por su ID (para la página de edición) ---
+// GET /api/admin/users/:userId
+router.get('/users/:userId', authMiddleware, authorizeRoles(['admin']), async (req, res) => {
+    try {
+        const user = await User.findById(req.params.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+        }
+        res.json({ success: true, user });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error en el servidor.' });
+    }
+});
+
+
+// PUT /api/admin/users/:userId
+router.put('/users/:userId', authMiddleware, authorizeRoles(['admin']), async (req, res) => {
+    const { name, email, role } = req.body;
+    const { userId } = req.params;
+
+    if (!name || !email || !role) {
+        return res.status(400).json({ success: false, message: 'Nombre, email y rol son requeridos para la actualización.' });
+    }
+
+    const validRoles = ['admin', 'operative', 'customer'];
+    if (!validRoles.includes(role)) {
+        return res.status(400).json({ success: false, message: 'El rol proporcionado no es válido.' });
+    }
+
+    try {
+        const userToUpdate = await User.findById(userId);
+        if (!userToUpdate) {
+            return res.status(404).json({ success: false, message: 'Usuario no encontrado para actualizar.' });
+        }
+
+        // Medida de seguridad: Un admin no puede quitarse su propio rol de admin.
+        if (req.user.userId === userId && userToUpdate.role === 'admin' && role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Un administrador no puede revocar su propio rol de administrador.' });
+        }
+
+        userToUpdate.name = name;
+        userToUpdate.email = email;
+        userToUpdate.role = role;
+
+        // La contraseña no se modifica aquí. Se debería crear una ruta separada y más segura para eso.
+        await userToUpdate.save();
+
+        const userToReturn = {
+            _id: userToUpdate._id,
+            name: userToUpdate.name,
+            email: userToUpdate.email,
+            role: userToUpdate.role,
+        };
+
+        res.json({ success: true, message: 'Usuario actualizado exitosamente.', user: userToReturn });
+
+    } catch (error) {
+        // Manejar el caso de que el email ya esté en uso por otro usuario
+        if (error.code === 11000) {
+            return res.status(409).json({ success: false, message: 'El correo electrónico ya está en uso por otro usuario.' });
+        }
+        console.error("Error al actualizar usuario:", error);
+        res.status(500).json({ success: false, message: 'Error en el servidor al actualizar el usuario.' });
+    }
+});
+
 
 // RUTA DELETE para que un administrador elimine un usuario operativo específico
-// DELETE /api/admin/users/operative/:userId
 router.delete(
     '/users/operative/:userId',
     authMiddleware,
-    authorizeRoles(['admin']), // Solo los administradores pueden acceder
+    authorizeRoles(['admin']),
     async (req, res) => {
         try {
             const userIdToDelete = req.params.userId;
 
-            // Medida de seguridad: Evitar que un admin se elimine a sí mismo a través de esta ruta
-            // req.user.userId es el ID del admin que está haciendo la petición
             if (req.user.userId === userIdToDelete) {
                 return res.status(400).json({
                     success: false,
@@ -130,7 +185,6 @@ router.delete(
                 });
             }
 
-            // Verificación crucial: Asegurarse de que el usuario a eliminar sea 'operative'
             if (userToDelete.role !== 'operative') {
                 return res.status(400).json({
                     success: false,
@@ -147,7 +201,6 @@ router.delete(
 
         } catch (err) {
             console.error('Error eliminando usuario operativo:', err);
-            // Si el error es por un ObjectId inválido
             if (err.name === 'CastError' && err.kind === 'ObjectId') {
                  return res.status(400).json({
                     success: false,

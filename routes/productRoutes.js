@@ -1,17 +1,17 @@
 // routes/productRoutes.js
 const express = require('express');
 const Product = require('../models/Product');
+const Category = require('../models/Category'); 
 const router = express.Router();
 
 // Importa tus middlewares de autenticación y autorización de roles
-// Asegúrate de que las rutas relativas sean correctas según tu estructura de carpetas
 const authMiddleware = require('../middleware/authMiddleware');
 const authorizeRoles = require('../middleware/roleMiddleware');
 
-// Obtener todos los productos (sin cambios, sigue siendo pública)
+// Obtener todos los productos
 router.get('/', async (req, res) => {
   try {
-    const products = await Product.find({});
+    const products = await Product.find({}).populate('category', 'name');
     res.json(products);
   } catch (err) {
     console.error("Error al obtener productos:", err);
@@ -19,43 +19,43 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/products/search?q=terminoDeBusqueda
-// Esta ruta busca productos por nombre.
+router.get('/offers', async (req, res) => {
+    try {
+        const offerProducts = await Product.find({ isOnSale: true }).populate('category', 'name');
+        res.json(offerProducts);
+    } catch (err) {
+        console.error("Error al obtener productos en oferta:", err);
+        res.status(500).json({ success: false, message: 'Error en el servidor al obtener las ofertas.' });
+    }
+});
+
+
+// Buscar productos por nombre
 router.get('/search', async (req, res) => {
   try {
-    const searchTerm = req.query.q; // 'q' es el nombre común para el parámetro de consulta (query)
-
+    const searchTerm = req.query.q; 
     if (!searchTerm) {
       return res.status(400).json({ success: false, message: 'Se requiere un término de búsqueda.' });
     }
-
-    // Busca en la base de datos productos donde el nombre contenga el término de búsqueda.
-    // '$regex' es para buscar patrones (similar a LIKE en SQL).
-    // '$options: 'i'' hace que la búsqueda no distinga entre mayúsculas y minúsculas.
     const products = await Product.find({
       name: { $regex: searchTerm, $options: 'i' }
-    });
-
+    }).populate('category', 'name');
     res.json(products);
-
   } catch (err) {
     console.error("Error en la búsqueda de productos:", err);
     res.status(500).json({ success: false, message: 'Error en el servidor al realizar la búsqueda.' });
   }
 });
 
-// Obtener productos por categoría (existente, sin cambios)
+// Obtener productos por categoría
 router.get('/category/:categoryName', async (req, res) => {
   try {
-    const validCategories = ['snacks', 'higiene', 'bebidas', 'lacteos'];
     const categoryName = req.params.categoryName.toLowerCase();
-
-    // Verificación opcional para asegurar que la categoría es válida
-    if (!validCategories.includes(categoryName)) {
-      return res.status(400).json({ success: false, message: 'La categoría proporcionada no es válida.' });
+    const category = await Category.findOne({ name: { $regex: new RegExp(`^${categoryName}$`, 'i') } });
+    if (!category) {
+      return res.json([]);
     }
-
-    const products = await Product.find({ category: categoryName });
+    const products = await Product.find({ category: category._id }).populate('category', 'name');
     res.json(products);
   } catch (err) {
     console.error("Error al obtener productos por categoría:", err);
@@ -63,26 +63,34 @@ router.get('/category/:categoryName', async (req, res) => {
   }
 });
 
+// Obtener un solo producto por su ID
+router.get('/:id', async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id).populate('category', 'name');
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Producto no encontrado.' });
+        }
+        res.json(product);
+    } catch (error) {
+        console.error("Error al obtener producto por ID:", error);
+        res.status(500).json({ success: false, message: 'Error en el servidor.' });
+    }
+});
 
-// Crear nuevo producto (existente, sin cambios)
+
+// Crear nuevo producto (con campos de oferta)
 router.post(
   '/', 
   authMiddleware, 
   authorizeRoles(['operative', 'admin']), 
   async (req, res) => {
-    const { name, price, imageUrl, stock, category } = req.body;
+    const { name, price, imageUrl, stock, category, isOnSale, salePrice } = req.body;
 
     if (!name || typeof price === 'undefined' || !imageUrl || !category) {
       return res.status(400).json({
         success: false,
         message: 'Nombre, precio, URL de imagen y categoría son requeridos.',
       });
-    }
-    if (typeof price !== 'number' || price < 0) {
-        return res.status(400).json({
-            success: false,
-            message: 'El precio debe ser un número válido y no negativo.'
-        });
     }
 
     try {
@@ -92,6 +100,8 @@ router.post(
         image: imageUrl, 
         stock: stock || 0,
         category,
+        isOnSale: isOnSale || false,
+        salePrice: (isOnSale && salePrice) ? salePrice : undefined
       };
 
       const product = new Product(productData);
@@ -106,31 +116,34 @@ router.post(
     } catch (err) {
       console.error("Error al crear producto:", err);
       if (err.name === 'ValidationError') {
-        return res.status(400).json({ success: false, message: 'Error de validación. Verifica que la categoría sea válida.', errors: err.errors });
+        return res.status(400).json({ success: false, message: err.message, errors: err.errors });
       }
       res.status(500).json({ success: false, message: 'Error en el servidor al crear el producto.', error: err.message });
     }
   }
 );
 
-// Actualizar producto (existente, sin cambios)
+// Actualizar producto (con campos de oferta)
 router.put(
   '/:id', 
   authMiddleware, 
   authorizeRoles(['admin', 'operative']), 
   async (req, res) => {
-  const { name, price, imageUrl, stock, category } = req.body;
+  const { name, price, imageUrl, stock, category, isOnSale, salePrice } = req.body;
   const updates = {};
   if (name) updates.name = name;
-  if (typeof price !== 'undefined') {
-    if (typeof price !== 'number' || price < 0) {
-        return res.status(400).json({ success: false, message: 'El precio debe ser un número válido y no negativo.' });
-    }
-    updates.price = price;
-  }
+  if (typeof price !== 'undefined') updates.price = price;
   if (imageUrl) updates.image = imageUrl; 
   if (typeof stock !== 'undefined') updates.stock = stock;
   if (category) updates.category = category;
+  if (typeof isOnSale !== 'undefined') updates.isOnSale = isOnSale;
+  
+  // Solo actualiza salePrice si se proporciona. Si isOnSale es false, se establece en null.
+  if (isOnSale === false) {
+    updates.salePrice = null;
+  } else if (typeof salePrice !== 'undefined') {
+    updates.salePrice = salePrice;
+  }
 
   try {
     const product = await Product.findByIdAndUpdate(
@@ -146,7 +159,7 @@ router.put(
   } catch (err) {
     console.error("Error al actualizar producto:", err);
     if (err.name === 'ValidationError') {
-        return res.status(400).json({ success: false, message: 'Error de validación.', errors: err.errors });
+        return res.status(400).json({ success: false, message: err.message, errors: err.errors });
     }
      if (err.name === 'CastError' && err.kind === 'ObjectId') {
         return res.status(400).json({
@@ -158,7 +171,7 @@ router.put(
   }
 });
 
-// Eliminar producto (existente, sin cambios)
+// Eliminar producto
 router.delete(
   '/:id', 
   authMiddleware, 

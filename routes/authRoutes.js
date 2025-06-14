@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // Asegúrate que tu modelo User ya tiene el campo 'role'
+const User = require('../models/User');
 const router = express.Router();
 
 // Ruta de registro
@@ -64,7 +64,7 @@ router.post('/register', async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role // <--- CAMBIO: Devolver rol en la respuesta
+                role: user.role // <---  Devolver rol en la respuesta
             }
         });
 
@@ -127,7 +127,7 @@ router.post('/login', async (req, res) => {
             role: user.role 
         };
         const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-            expiresIn: '30d' // O el tiempo que prefieras
+            expiresIn: '30d' 
         });
 
         // Respuesta exitosa, incluyendo el rol del usuario

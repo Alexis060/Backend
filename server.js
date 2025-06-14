@@ -4,14 +4,13 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
-// Importar modelos
-// const Product = require('./models/Product'); // Opcional si no se usa directamente aquí
 
 // Importar rutas
 const authRoutes = require('./routes/authRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const productRoutes = require('./routes/productRoutes');
-const adminRoutes = require('./routes/adminRoutes'); // <--- 1. IMPORTA TUS ADMIN ROUTES
+const adminRoutes = require('./routes/adminRoutes'); 
+const categoryRoutes = require('./routes/categoryRoutes');
 
 const app = express();
 
@@ -32,7 +31,8 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/admin', adminRoutes); // <--- 2. USA TUS ADMIN ROUTES (puedes elegir el prefijo que desees, /api/admin es común)
+app.use('/api/admin', adminRoutes); 
+app.use('/api/categories', categoryRoutes);
 
 // Rutas de depuración (opcionales)
 app.post('/debug-body', (req, res) => {
@@ -56,7 +56,7 @@ mongoose.connect(process.env.MONGO_URI, {
 })
 .then(() => {
   console.log(' Conectado a MongoDB');
-  const PORT = process.env.PORT || 5000; // Usar variable de entorno para el puerto es buena práctica
+  const PORT = process.env.PORT || 5000; 
   app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`));
 })
 .catch(err => console.error(' Error al conectar a MongoDB:', err));
