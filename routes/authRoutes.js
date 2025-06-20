@@ -49,10 +49,10 @@ router.post('/register', async (req, res) => {
         // Generar un token JWT incluyendo el rol
         const tokenPayload = { 
             userId: user._id, 
-            role: user.role // <--- CAMBIO: Incluir rol en el token
+            role: user.role //Incluir rol en el token
         };
         const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-            expiresIn: '30d', // O el tiempo que prefieras
+            expiresIn: '30d', // O el tiempo que se prefiera
         });
 
         // Respuesta exitosa, incluyendo el rol del usuario
@@ -64,7 +64,7 @@ router.post('/register', async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role // <---  Devolver rol en la respuesta
+                role: user.role //Devolver rol en la respuesta
             }
         });
 

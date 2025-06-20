@@ -1,30 +1,26 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const Cart = require('../models/Cart');
-const Product = require('../models/Product'); 
+const Product = require('../models/Product');
 const mongoose = require('mongoose');
 const router = express.Router();
 
 // Helper para formatear la respuesta del carrito
 const formatCartResponse = (cartDocument) => {
   if (!cartDocument) return null;
-  // Asegurarse de que products sea un array, incluso si es null/undefined en el documento
   const products = Array.isArray(cartDocument.products) ? cartDocument.products : [];
   return {
-    ...cartDocument, // Usar .toObject() o .lean() si es un documento de Mongoose completo
+    ...cartDocument,
     products: products.map(item => {
-      
       const productDetails = item.productId;
       return {
-        ...item, // Esto podría ser item.toObject() si es un subdocumento
-        productId: productDetails ? productDetails._id : null, // El ID del producto
-        product: productDetails, // El objeto Product completo populado
-        // quantity ya está en item
+        ...item,
+        productId: productDetails ? productDetails._id : null,
+        product: productDetails,
       };
     })
   };
 };
-
 
 // Ruta POST /merge - Fusionar carrito de invitado con el del usuario
 router.post('/merge', authMiddleware, async (req, res) => {
@@ -50,9 +46,9 @@ router.post('/merge', authMiddleware, async (req, res) => {
       const invalidItemsTransaction = [];
       guestCart.forEach((item, index) => {
         const isValid = item &&
-                        mongoose.Types.ObjectId.isValid(item.productId) &&
-                        Number.isInteger(item.quantity) &&
-                        item.quantity > 0;
+          mongoose.Types.ObjectId.isValid(item.productId) &&
+          Number.isInteger(item.quantity) &&
+          item.quantity > 0;
         isValid ? validItemsTransaction.push(item) : invalidItemsTransaction.push({ item, index, reason: 'Formato o valor inválido' });
       });
 
@@ -61,9 +57,9 @@ router.post('/merge', authMiddleware, async (req, res) => {
         err.isValidationError = true;
         err.statusCode = 400;
         err.details = {
-            invalidCount: invalidItemsTransaction.length,
-            invalidItems: invalidItemsTransaction.map(({ item, index, reason }) => ({ index, itemReceived: item, reason })),
-            sampleError: invalidItemsTransaction[0]
+          invalidCount: invalidItemsTransaction.length,
+          invalidItems: invalidItemsTransaction.map(({ item, index, reason }) => ({ index, itemReceived: item, reason })),
+          sampleError: invalidItemsTransaction[0]
         };
         throw err;
       }
@@ -79,26 +75,22 @@ router.post('/merge', authMiddleware, async (req, res) => {
         userCart = new Cart({ userId, products: [] });
       }
 
-      if (!userCart.products) { // Asegurar que products exista
+      if (!userCart.products) {
         userCart.products = [];
       }
 
       const productMap = new Map();
-      // Poblar el mapa con los productos existentes en el carrito del usuario
       userCart.products.forEach(item => {
         if (item.productId) {
-          productMap.set(item.productId.toString(), item); // Guardar el item completo para mantener _id si es necesario
+          productMap.set(item.productId.toString(), item);
         }
       });
 
-      // Fusionar con los productos del carrito de invitado
       validItemsTransaction.forEach(guestItem => {
         const productIdStr = guestItem.productId.toString();
-
-        // Esto evita la suma de cantidades que causaba la duplicación.
         productMap.set(productIdStr, {
-            productId: new mongoose.Types.ObjectId(guestItem.productId),
-            quantity: guestItem.quantity
+          productId: new mongoose.Types.ObjectId(guestItem.productId),
+          quantity: guestItem.quantity
         });
       });
 
@@ -106,26 +98,25 @@ router.post('/merge', authMiddleware, async (req, res) => {
 
       await userCart.save({ session: currentSession });
       console.log(`Ruta /merge: Carrito guardado exitosamente en transacción para userId: ${userId}`);
-      return userCart; // Devolver el documento de Mongoose
+      return userCart;
     });
 
     if (!mergedCartDocument) {
-        console.error('Ruta /merge: mergedCartDocument fue null/undefined después de withTransaction');
-        throw new Error('La transacción de fusión no devolvió un resultado de carrito.');
+      console.error('Ruta /merge: mergedCartDocument fue null/undefined después de withTransaction');
+      throw new Error('La transacción de fusión no devolvió un resultado de carrito.');
     }
 
-    // Popular fuera de la transacción
     const populatedCart = await Cart.findById(mergedCartDocument._id)
       .populate({
-          path: 'products.productId',
-          model: 'Product', 
-          select: 'name price image stock'
+        path: 'products.productId',
+        model: 'Product',
+        select: 'name price image stock'
       })
-      .lean(); // .lean() para obtener un objeto JS plano
+      .lean();
 
     if (!populatedCart) {
-        console.error(`Ruta /merge: No se pudo encontrar el carrito ${mergedCartDocument._id} para poblar después de la transacción.`);
-        throw new Error('No se pudo poblar el carrito después de la fusión.');
+      console.error(`Ruta /merge: No se pudo encontrar el carrito ${mergedCartDocument._id} para poblar después de la transacción.`);
+      throw new Error('No se pudo poblar el carrito después de la fusión.');
     }
     
     res.status(200).json({
@@ -142,11 +133,11 @@ router.post('/merge', authMiddleware, async (req, res) => {
     console.error('*********************************************');
 
     if (err.isValidationError === true && err.statusCode) {
-        return res.status(err.statusCode).json({
-            success: false,
-            message: err.message,
-            ...(err.details && { details: err.details })
-        });
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+        ...(err.details && { details: err.details })
+      });
     }
     
     const isWriteConflict = err.errorLabels && err.errorLabels.includes('TransientTransactionError');
@@ -158,13 +149,13 @@ router.post('/merge', authMiddleware, async (req, res) => {
     });
   } finally {
     if (session.inTransaction()) {
-        await session.abortTransaction();
+      await session.abortTransaction();
     }
     await session.endSession();
   }
 });
 
-// Ruta POST /add - Agregar producto al carrito
+// Ruta POST /add - Agregar producto al carrito (CON VALIDACIÓN DE STOCK)
 router.post('/add', authMiddleware, async (req, res) => {
   try {
     const { productId, quantity } = req.body;
@@ -174,23 +165,44 @@ router.post('/add', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, message: 'productId y quantity son requeridos' });
     }
     if (!mongoose.Types.ObjectId.isValid(productId)) {
-        return res.status(400).json({ success: false, message: 'productId inválido' });
+      return res.status(400).json({ success: false, message: 'productId inválido' });
     }
     if (!Number.isInteger(quantity) || quantity < 1) {
-        return res.status(400).json({ success: false, message: 'quantity debe ser un entero positivo' });
+      return res.status(400).json({ success: false, message: 'quantity debe ser un entero positivo' });
+    }
+
+    //INICIO DE LA LÓGICA DE STOCK
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
     }
 
     let cart = await Cart.findOne({ userId });
-
     if (!cart) {
       cart = new Cart({ userId, products: [] });
     }
 
     const productObjectId = new mongoose.Types.ObjectId(productId);
-    const index = cart.products.findIndex(p => p.productId.equals(productObjectId));
+    const existingProductIndex = cart.products.findIndex(p => p.productId.equals(productObjectId));
 
-    if (index >= 0) {
-      cart.products[index].quantity += quantity;
+    let quantityInCart = 0;
+    if (existingProductIndex >= 0) {
+      quantityInCart = cart.products[existingProductIndex].quantity;
+    }
+
+    // Comprobar si la cantidad que se quiere agregar MÁS la que ya está en el carrito excede el stock
+    if ((quantityInCart + quantity) > product.stock) {
+      return res.status(400).json({
+        success: false,
+        message: `No hay suficiente stock para '${product.name}'. Solo quedan ${product.stock} unidades disponibles.`,
+        stockAvailable: product.stock,
+      });
+    }
+    //FIN DE LA LÓGICA DE STOCK
+
+    // La lógica para agregar o actualizar.
+    if (existingProductIndex >= 0) {
+      cart.products[existingProductIndex].quantity += quantity;
     } else {
       cart.products.push({ productId: productObjectId, quantity });
     }
@@ -198,12 +210,12 @@ router.post('/add', authMiddleware, async (req, res) => {
     await cart.save();
 
     const populatedCart = await Cart.findById(cart._id)
-        .populate({
-            path: 'products.productId',
-            model: 'Product',
-            select: 'name price image stock',
-        })
-        .lean();
+      .populate({
+        path: 'products.productId',
+        model: 'Product',
+        select: 'name price image stock',
+      })
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -217,13 +229,67 @@ router.post('/add', authMiddleware, async (req, res) => {
   }
 });
 
-// Ruta POST /update - Actualizar carrito completo (usado por saveCart en frontend)
+//INICIO DE LA NUEVA RUTA DE CHECKOUT
+// Ruta POST /checkout - Simula la compra, valida stock y lo actualiza
+router.post('/checkout', authMiddleware, async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    let finalCart;
+    await session.withTransaction(async () => {
+      const userId = req.user.userId;
+      
+      // 1. Obtener el carrito del usuario con los productos populados DENTRO de la transacción
+      const cart = await Cart.findOne({ userId }).session(session).populate('products.productId');
+      if (!cart || cart.products.length === 0) {
+        throw new Error('Tu carrito está vacío.');
+      }
+
+      // 2. Verificar el stock de cada producto en el carrito
+      for (const item of cart.products) {
+        const product = item.productId; // El producto ya está populado
+        if (product.stock < item.quantity) {
+          // Si no hay suficiente stock, abortar la transacción
+          throw new Error(`Stock insuficiente para '${product.name}'. Quedan ${product.stock} y tu carrito tiene ${item.quantity}.`);
+        }
+      }
+
+      // 3. Si hay stock para todo, actualizar el stock de cada producto
+      const updatePromises = cart.products.map(item => {
+        return Product.updateOne(
+          { _id: item.productId._id },
+          { $inc: { stock: -item.quantity } }, // Restar la cantidad del stock
+          { session }
+        );
+      });
+      await Promise.all(updatePromises);
+
+      // 4. Vaciar el carrito del usuario
+      cart.products = [];
+      await cart.save({ session });
+      
+      finalCart = cart; // Guardar el carrito vacío para la respuesta
+    });
+
+    res.status(200).json({
+        success: true,
+        message: '¡Compra simulada exitosamente! Tu carrito ha sido vaciado.',
+        cart: formatCartResponse(finalCart.toObject())
+    });
+
+  } catch (error) {
+    console.error('Error en /checkout:', error);
+    res.status(400).json({ success: false, message: error.message });
+  } finally {
+    await session.endSession();
+  }
+});
+//FIN DE LA NUEVA RUTA DE CHECKOUT
+
+// Ruta POST /update - Actualizar carrito completo.
 router.post('/update', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { products } = req.body;
-
-    console.log('Ruta /update recibida con:', JSON.stringify(products, null, 2));
 
     if (!Array.isArray(products)) {
       return res.status(400).json({ success: false, message: 'products debe ser un arreglo' });
@@ -235,7 +301,7 @@ router.post('/update', authMiddleware, async (req, res) => {
         !p.productId ||
         !mongoose.Types.ObjectId.isValid(p.productId) ||
         typeof p.quantity !== 'number' ||
-        p.quantity < 0 // Permitir cantidad 0 para potencialmente eliminar
+        p.quantity < 0
       ) {
         console.error('Producto inválido en /update:', p);
         return res.status(400).json({
@@ -244,7 +310,7 @@ router.post('/update', authMiddleware, async (req, res) => {
           invalidProduct: p
         });
       }
-      if (p.quantity > 0) { // Solo guardar productos con cantidad > 0
+      if (p.quantity > 0) {
         validatedProducts.push({
           productId: new mongoose.Types.ObjectId(p.productId),
           quantity: p.quantity
@@ -252,20 +318,16 @@ router.post('/update', authMiddleware, async (req, res) => {
       }
     }
     
-    console.log('Ruta /update - Validated products para guardar:', JSON.stringify(validatedProducts, null, 2));
-
     const updatedCart = await Cart.findOneAndUpdate(
       { userId },
       { $set: { products: validatedProducts } },
       { new: true, upsert: true, runValidators: true }
     ).populate({
-        path: 'products.productId',
-        model: 'Product',
-        select: 'name price image stock',
+      path: 'products.productId',
+      model: 'Product',
+      select: 'name price image stock',
     }).lean();
     
-    console.log('Ruta /update - Carrito después de findOneAndUpdate y populate:', JSON.stringify(updatedCart, null, 2));
-
     res.json({
       success: true,
       message: 'Carrito actualizado',
@@ -277,14 +339,14 @@ router.post('/update', authMiddleware, async (req, res) => {
   }
 });
 
-// Ruta DELETE /remove/:productId - Eliminar producto específico
+// Ruta DELETE /remove/:productId - Eliminar producto específico.
 router.delete('/remove/:productId', authMiddleware, async (req, res) => {
   try {
     const { productId } = req.params;
     const userId = req.user.userId;
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
-        return res.status(400).json({ success: false, message: 'productId inválido' });
+      return res.status(400).json({ success: false, message: 'productId inválido' });
     }
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
@@ -293,20 +355,18 @@ router.delete('/remove/:productId', authMiddleware, async (req, res) => {
       { $pull: { products: { productId: productObjectId } } },
       { new: true }
     ).populate({
-        path: 'products.productId',
-        model: 'Product',
-        select: 'name price image stock',
+      path: 'products.productId',
+      model: 'Product',
+      select: 'name price image stock',
     }).lean();
 
     if (!cart) {
-        // Si el carrito no existía, findOneAndUpdate con $pull no lo creará.
-        // Devolver un carrito vacío si el usuario no tenía uno.
-        console.log(`Ruta /remove: Carrito no encontrado para userId ${userId} o producto no estaba. Devolviendo carrito vacío.`);
-        return res.status(200).json({ 
-            success: true,
-            message: 'Producto no encontrado en el carrito o carrito no existente.',
-            cart: formatCartResponse({ userId, products: [] }) // Estructura de carrito vacío
-        });
+      console.log(`Ruta /remove: Carrito no encontrado para userId ${userId} o producto no estaba. Devolviendo carrito vacío.`);
+      return res.status(200).json({ 
+        success: true,
+        message: 'Producto no encontrado en el carrito o carrito no existente.',
+        cart: formatCartResponse({ userId, products: [] })
+      });
     }
 
     res.status(200).json({
@@ -321,7 +381,7 @@ router.delete('/remove/:productId', authMiddleware, async (req, res) => {
   }
 });
 
-// Ruta DELETE /clear - Vaciar carrito completamente
+// Ruta DELETE /clear - Vaciar carrito completamente.
 router.delete('/clear', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -329,17 +389,17 @@ router.delete('/clear', authMiddleware, async (req, res) => {
     const cart = await Cart.findOneAndUpdate(
       { userId },
       { $set: { products: [] } },
-      { new: true, upsert: true } 
+      { new: true, upsert: true }
     ).populate({
-        path: 'products.productId', // Aunque products esté vacío, mantenemos populate por consistencia
-        model: 'Product',
-        select: 'name price image stock',
+      path: 'products.productId',
+      model: 'Product',
+      select: 'name price image stock',
     }).lean();
     
     res.status(200).json({
       success: true,
       message: 'Carrito vaciado',
-      cart: formatCartResponse(cart) // Debería tener products: []
+      cart: formatCartResponse(cart)
     });
 
   } catch (err) {
@@ -356,22 +416,22 @@ router.get('/', authMiddleware, async (req, res) => {
 
     const cart = await Cart.findOne({ userId })
       .populate({
-          path: 'products.productId',
-          model: 'Product',
-          select: 'name price image stock',
+        path: 'products.productId',
+        model: 'Product',
+        select: 'name price image stock',
       })
       .lean();
 
     if (!cart) {
       console.log(`[GET /api/cart] No se encontró carrito para userId: ${userId}. Devolviendo carrito vacío.`);
       return res.status(200).json({
-          success: true,
-          cart: formatCartResponse({ // Estructura de carrito vacío consistente
-              _id: null, 
-              userId: userId,
-              products: [],
-              __v: 0 
-          })
+        success: true,
+        cart: formatCartResponse({
+          _id: null,
+          userId: userId,
+          products: [],
+          __v: 0
+        })
       });
     }
     

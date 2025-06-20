@@ -34,7 +34,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/admin', adminRoutes); 
 app.use('/api/categories', categoryRoutes);
 
-// Rutas de depuración (opcionales)
+// Rutas de depuración
 app.post('/debug-body', (req, res) => {
   res.json({
     headers: req.headers,

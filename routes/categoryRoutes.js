@@ -6,8 +6,6 @@ const Product = require('../models/Product');
 const authMiddleware = require('../middleware/authMiddleware');
 const authorizeRoles = require('../middleware/roleMiddleware');
 
-// === RUTAS ESTÁTICAS PRIMERO ===
-
 // GET /api/categories - Obtener todas las categorías
 router.get('/', async (req, res) => {
     try {

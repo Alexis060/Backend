@@ -11,7 +11,7 @@ const productSchema = new mongoose.Schema({
     ref: 'Category',
     required: true
   },
-  // --- CAMPOS PARA OFERTAS ---
+  //CAMPOS PARA OFERTAS
   isOnSale: {
     type: Boolean,
     default: false // Por defecto, un producto no está en oferta

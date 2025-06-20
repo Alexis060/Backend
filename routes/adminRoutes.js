@@ -93,7 +93,7 @@ router.get(
     }
 );
 
-// --- RUTA AÑADIDA: Obtener un solo usuario por su ID (para la página de edición) ---
+
 // GET /api/admin/users/:userId
 router.get('/users/:userId', authMiddleware, authorizeRoles(['admin']), async (req, res) => {
     try {
@@ -216,5 +216,4 @@ router.delete(
     }
 );
 
-// Exportar las rutas de administrador
 module.exports = router;

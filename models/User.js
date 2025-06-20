@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs'); // Para encriptar la contraseña
+const bcrypt = require('bcryptjs'); 
 
 // Esquema del modelo de usuario
 const userSchema = new mongoose.Schema({
