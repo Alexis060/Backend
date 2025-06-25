@@ -110,7 +110,7 @@ router.post('/merge', authMiddleware, async (req, res) => {
       .populate({
         path: 'products.productId',
         model: 'Product',
-        select: 'name price image stock'
+        select: 'name price image stock isOnSale salePrice' 
       })
       .lean();
 
@@ -213,7 +213,7 @@ router.post('/add', authMiddleware, async (req, res) => {
       .populate({
         path: 'products.productId',
         model: 'Product',
-        select: 'name price image stock',
+        select: 'name price image stock isOnSale salePrice', 
       })
       .lean();
 
@@ -229,7 +229,7 @@ router.post('/add', authMiddleware, async (req, res) => {
   }
 });
 
-//INICIO DE LA NUEVA RUTA DE CHECKOUT
+
 // Ruta POST /checkout - Simula la compra, valida stock y lo actualiza
 router.post('/checkout', authMiddleware, async (req, res) => {
   const session = await mongoose.startSession();
@@ -283,7 +283,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
     await session.endSession();
   }
 });
-//FIN DE LA NUEVA RUTA DE CHECKOUT
+
 
 // Ruta POST /update - Actualizar carrito completo.
 router.post('/update', authMiddleware, async (req, res) => {
@@ -325,7 +325,7 @@ router.post('/update', authMiddleware, async (req, res) => {
     ).populate({
       path: 'products.productId',
       model: 'Product',
-      select: 'name price image stock',
+      select: 'name price image stock isOnSale salePrice', 
     }).lean();
     
     res.json({
@@ -357,7 +357,7 @@ router.delete('/remove/:productId', authMiddleware, async (req, res) => {
     ).populate({
       path: 'products.productId',
       model: 'Product',
-      select: 'name price image stock',
+      select: 'name price image stock isOnSale salePrice', // <-- CORREGIDO
     }).lean();
 
     if (!cart) {
@@ -393,7 +393,7 @@ router.delete('/clear', authMiddleware, async (req, res) => {
     ).populate({
       path: 'products.productId',
       model: 'Product',
-      select: 'name price image stock',
+      select: 'name price image stock isOnSale salePrice', // <-- CORREGIDO
     }).lean();
     
     res.status(200).json({
@@ -418,7 +418,7 @@ router.get('/', authMiddleware, async (req, res) => {
       .populate({
         path: 'products.productId',
         model: 'Product',
-        select: 'name price image stock',
+        select: 'name price image stock isOnSale salePrice', // <-- CORREGIDO
       })
       .lean();
 
