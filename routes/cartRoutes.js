@@ -238,36 +238,31 @@ router.post('/checkout', authMiddleware, async (req, res) => {
     await session.withTransaction(async () => {
       const userId = req.user.userId;
       
-      // 1. Obtener el carrito del usuario con los productos populados DENTRO de la transacción
       const cart = await Cart.findOne({ userId }).session(session).populate('products.productId');
       if (!cart || cart.products.length === 0) {
         throw new Error('Tu carrito está vacío.');
       }
 
-      // 2. Verificar el stock de cada producto en el carrito
       for (const item of cart.products) {
-        const product = item.productId; // El producto ya está populado
+        const product = item.productId;
         if (product.stock < item.quantity) {
-          // Si no hay suficiente stock, abortar la transacción
           throw new Error(`Stock insuficiente para '${product.name}'. Quedan ${product.stock} y tu carrito tiene ${item.quantity}.`);
         }
       }
 
-      // 3. Si hay stock para todo, actualizar el stock de cada producto
       const updatePromises = cart.products.map(item => {
         return Product.updateOne(
           { _id: item.productId._id },
-          { $inc: { stock: -item.quantity } }, // Restar la cantidad del stock
+          { $inc: { stock: -item.quantity } },
           { session }
         );
       });
       await Promise.all(updatePromises);
 
-      // 4. Vaciar el carrito del usuario
       cart.products = [];
       await cart.save({ session });
       
-      finalCart = cart; // Guardar el carrito vacío para la respuesta
+      finalCart = cart;
     });
 
     res.status(200).json({
@@ -282,6 +277,72 @@ router.post('/checkout', authMiddleware, async (req, res) => {
   } finally {
     await session.endSession();
   }
+});
+
+// Ruta POST /set-quantity - Establecer una cantidad específica para un producto
+router.post('/set-quantity', authMiddleware, async (req, res) => {
+    try {
+        const { productId, quantity } = req.body;
+        const userId = req.user.userId;
+
+        if (!productId || quantity == null) {
+            return res.status(400).json({ success: false, message: 'Se requieren productId y quantity.' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+            return res.status(400).json({ success: false, message: 'El ID del producto no es válido.' });
+        }
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            return res.status(400).json({ success: false, message: 'La cantidad debe ser un número entero positivo.' });
+        }
+
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Producto no encontrado.' });
+        }
+
+        if (quantity > product.stock) {
+            return res.status(400).json({
+                success: false,
+                message: `No hay suficiente stock para '${product.name}'. Solo quedan ${product.stock} unidades disponibles.`,
+                stockAvailable: product.stock,
+            });
+        }
+
+        let cart = await Cart.findOne({ userId });
+
+        if (!cart) {
+            return res.status(404).json({ success: false, message: "Carrito no encontrado." });
+        }
+
+        const productObjectId = new mongoose.Types.ObjectId(productId);
+        const existingProductIndex = cart.products.findIndex(p => p.productId.equals(productObjectId));
+
+        if (existingProductIndex >= 0) {
+            cart.products[existingProductIndex].quantity = quantity;
+        } else {
+            cart.products.push({ productId: productObjectId, quantity });
+        }
+
+        await cart.save();
+
+        const populatedCart = await Cart.findById(cart._id)
+            .populate({
+                path: 'products.productId',
+                model: 'Product',
+                select: 'name price image stock isOnSale salePrice'
+            })
+            .lean();
+
+        res.status(200).json({
+            success: true,
+            message: 'Cantidad actualizada correctamente.',
+            cart: formatCartResponse(populatedCart)
+        });
+
+    } catch (err) {
+        console.error('Error en /set-quantity:', err);
+        res.status(500).json({ success: false, message: 'Error al actualizar la cantidad del producto.', error: err.message });
+    }
 });
 
 
@@ -357,7 +418,7 @@ router.delete('/remove/:productId', authMiddleware, async (req, res) => {
     ).populate({
       path: 'products.productId',
       model: 'Product',
-      select: 'name price image stock isOnSale salePrice', // <-- CORREGIDO
+      select: 'name price image stock isOnSale salePrice',
     }).lean();
 
     if (!cart) {
@@ -393,7 +454,7 @@ router.delete('/clear', authMiddleware, async (req, res) => {
     ).populate({
       path: 'products.productId',
       model: 'Product',
-      select: 'name price image stock isOnSale salePrice', // <-- CORREGIDO
+      select: 'name price image stock isOnSale salePrice',
     }).lean();
     
     res.status(200).json({
@@ -418,7 +479,7 @@ router.get('/', authMiddleware, async (req, res) => {
       .populate({
         path: 'products.productId',
         model: 'Product',
-        select: 'name price image stock isOnSale salePrice', // <-- CORREGIDO
+        select: 'name price image stock isOnSale salePrice',
       })
       .lean();
 
