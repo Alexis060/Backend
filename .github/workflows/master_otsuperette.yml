@@ -67,5 +67,5 @@ jobs:
         with:
           app-name: 'OTSuperette'
           slot-name: 'Production'
-          package:  './backend'
+          package: '.' 
           
